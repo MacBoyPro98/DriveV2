@@ -1,0 +1,53 @@
+{
+    "author": "MacBoy__Pro",
+    "dependencies": {
+        "@rebble/clay": "^1.0.8"
+    },
+    "keywords": [
+        "pebble-app"
+    ],
+    "name": "drive-v2",
+    "pebble": {
+        "capabilities": [
+            "location",
+            "configurable"
+        ],
+        "displayName": "Pebble Drive",
+        "enableMultiJS": true,
+        "messageKeys": [
+            "TEMPERATURE",
+            "CONDITIONS",
+            "REQUEST_WEATHER",
+            "BackgroundColor",
+            "ForegroundColor",
+            "TemperatureUnit",
+            "ShowDate",
+            "WeatherBackgroundColor",
+            "WeatherForegroundColor",
+            "TimeColor",
+            "DateColor",
+            "WeatherColor",
+            "WeatherCheckRate"
+        ],
+        "projectType": "native",
+        "resources": {
+            "media": [
+                {
+                    "file": "images/bt-icon.png",
+                    "name": "IMAGE_BT_ICON",
+                    "type": "bitmap"
+                }
+            ]
+        },
+        "sdkVersion": "3",
+        "targetPlatforms": [
+            "aplite",
+            "basalt"
+        ],
+        "uuid": "339924fe-355f-4340-9a99-86ff0badf085",
+        "watchapp": {
+            "watchface": true
+        }
+    },
+    "version": "1.0.0"
+}
