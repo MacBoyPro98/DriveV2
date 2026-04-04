@@ -39,13 +39,13 @@ static Layer *s_window_layer;
 
 // Set default settings
 static void prv_default_settings() {
-  // use fahrenheit
+  // false = fahrenheit, true = celcius
   settings.TemperatureUnit = false;
   settings.WeatherCheckRate = 30;
   settings.ShowDate = true;
   settings.BackgroundColor = GColorBlack;
   settings.WeatherBackgroundColor = GColorWhite;
-  settings.TimeColor = GColorWhite;
+  settings.TimeColor = GColorDarkCandyAppleRed;
   settings.DateColor = GColorYellow;
   settings.WeatherColor = GColorCadetBlue;
 }
@@ -65,16 +65,16 @@ static void prv_load_settings() {
 
 // Apply settings to UI elements
 static void prv_update_display() {
+  window_set_background_color(s_main_window, settings.BackgroundColor);
   // Set background color
-//   window_set_background_color(s_main_window, settings.BackgroundColor);
-  text_layer_set_background_color(s_time_layer, settings.BackgroundColor);
-  text_layer_set_background_color(s_date_layer, settings.BackgroundColor);
-  text_layer_set_background_color(s_weather_layer, settings.WeatherBackgroundColor);
+  text_layer_set_background_color(s_time_layer, PBL_IF_COLOR_ELSE(settings.BackgroundColor, GColorBlack));
+  text_layer_set_background_color(s_date_layer, PBL_IF_COLOR_ELSE(settings.BackgroundColor, GColorBlack));
+  text_layer_set_background_color(s_weather_layer, PBL_IF_COLOR_ELSE(settings.WeatherBackgroundColor, GColorWhite));
 
   // Set text colors
-  text_layer_set_text_color(s_time_layer, settings.TimeColor);
-  text_layer_set_text_color(s_date_layer, settings.DateColor);
-  text_layer_set_text_color(s_weather_layer, settings.WeatherColor);
+  text_layer_set_text_color(s_time_layer, PBL_IF_COLOR_ELSE(settings.TimeColor, GColorWhite));
+  text_layer_set_text_color(s_date_layer, PBL_IF_COLOR_ELSE(settings.DateColor, GColorWhite));
+  text_layer_set_text_color(s_weather_layer, PBL_IF_COLOR_ELSE(settings.WeatherColor, GColorBlack));
 
   // Show/hide date based on setting
   layer_set_hidden(text_layer_get_layer(s_date_layer), !settings.ShowDate);
@@ -100,7 +100,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_time();
 
   // Get weather update every 30 minutes
-  if (tick_time->tm_min % 30 == 0) {
+  if (tick_time->tm_min % settings.WeatherCheckRate == 0) {
     DictionaryIterator *iter;
     app_message_outbox_begin(&iter);
     dict_write_uint8(iter, MESSAGE_KEY_REQUEST_WEATHER, 1);
@@ -193,17 +193,17 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
 
   Tuple *time_color_t = dict_find(iterator, MESSAGE_KEY_TimeColor);
   if (time_color_t) {
-    settings.TimeColor = GColorFromHEX(time_color_t->value->int32);
+    settings.TimeColor = PBL_IF_COLOR_ELSE(GColorFromHEX(time_color_t->value->int32), GColorWhite);
   }
 
   Tuple *date_color_t = dict_find(iterator, MESSAGE_KEY_DateColor);
   if (date_color_t) {
-    settings.DateColor = GColorFromHEX(date_color_t->value->int32);
+    settings.DateColor = PBL_IF_COLOR_ELSE(GColorFromHEX(date_color_t->value->int32), GColorWhite);
   }
 
   Tuple *temp_color_t = dict_find(iterator, MESSAGE_KEY_WeatherColor);
   if (temp_color_t) {
-    settings.WeatherColor = GColorFromHEX(temp_color_t->value->int32);
+    settings.WeatherColor = PBL_IF_COLOR_ELSE(GColorFromHEX(temp_color_t->value->int32), GColorBlack);
   }
 
   Tuple *temp_unit_t = dict_find(iterator, MESSAGE_KEY_TemperatureUnit);
@@ -283,19 +283,6 @@ static void prv_unobstructed_did_change(void *context) {
     layer_set_hidden(bitmap_layer_get_layer(s_bt_icon_layer),
       connection_service_peek_pebble_app_connection());
   }
-  
-//   int weather_height = 54;
-//   int weather_y = bounds.size.h - weather_height;
-//   GRect weather_frame = layer_get_frame(text_layer_get_layer(s_weather_layer));
-//   weather_frame.origin.y = weather_y;
-//   layer_set_frame(text_layer_get_layer(s_weather_layer), weather_frame);
-  
-//   bool w_obstructed = !grect_equal(&full_bounds, &bounds);
-//   if (w_obstructed) {
-//     layer_set_hidden(text_layer_get_layer(s_weather_layer), true);
-//   } else {
-//     layer_set_hidden(text_layer_get_layer(s_weather_layer), false);
-//   }
 }
 
 static void main_window_load(Window *window) {
@@ -330,40 +317,20 @@ static void main_window_load(Window *window) {
 
   // Weather
   int weather_height = bounds.size.h / 3;
-  int weather_y = (bounds.size.h - weather_height);
+  int weather_y = bounds.size.h - weather_height;
   s_weather_layer = text_layer_create(GRect(0, weather_y, bounds.size.w, weather_height));
   text_layer_set_font(s_weather_layer, fonts_get_system_font(FONT_KEY_LECO_42_NUMBERS));
   text_layer_set_text_alignment(s_weather_layer, GTextAlignmentCenter);
   text_layer_set_text(s_weather_layer, "...");
-
-  // Create the Bluetooth icon GBitmap
-  s_bt_icon_bitmap = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BT_ICON);
-  int bt_y = bar_y + 12;
-  s_bt_icon_layer = bitmap_layer_create(GRect((bounds.size.w - 30) / 2, bt_y, 30, 30));
-  bitmap_layer_set_bitmap(s_bt_icon_layer, s_bt_icon_bitmap);
-  bitmap_layer_set_compositing_mode(s_bt_icon_layer, GCompOpSet);
 
   // Add layers to the Window
   layer_add_child(s_window_layer, text_layer_get_layer(s_time_layer));
   layer_add_child(s_window_layer, text_layer_get_layer(s_date_layer));
   layer_add_child(s_window_layer, text_layer_get_layer(s_weather_layer));
   layer_add_child(s_window_layer, s_battery_layer);
-  layer_add_child(s_window_layer, bitmap_layer_get_layer(s_bt_icon_layer));
 
   // Apply saved settings
   prv_update_display();
-
-  // Apply correct layout in case Quick View is already active
-  prv_unobstructed_change(0, NULL);
-  prv_unobstructed_did_change(NULL);
-
-  // Subscribe to unobstructed area events
-  UnobstructedAreaHandlers handlers = {
-    .will_change = prv_unobstructed_will_change,
-    .change = prv_unobstructed_change,
-    .did_change = prv_unobstructed_did_change
-  };
-  unobstructed_area_service_subscribe(handlers, NULL);
 }
 
 static void main_window_unload(Window *window) {
@@ -371,8 +338,6 @@ static void main_window_unload(Window *window) {
   text_layer_destroy(s_date_layer);
   text_layer_destroy(s_weather_layer);
   layer_destroy(s_battery_layer);
-  gbitmap_destroy(s_bt_icon_bitmap);
-  bitmap_layer_destroy(s_bt_icon_layer);
 }
 
 static void init() {

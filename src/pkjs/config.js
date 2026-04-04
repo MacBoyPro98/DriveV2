@@ -7,8 +7,25 @@ module.exports = [
     "type": "text",
     "defaultValue": "Customize your watchface appearance and preferences."
   },
+//   {
+//     "type": "section",
+//     "layout": ["BLACK_WHITE"],
+//     "items": [
+//       {
+//         "type": "heading",
+//         "defaultValue": "Colors"
+//       },
+//       {
+//         "type": "toggle",
+//         "messageKey": "InvertColors",
+//         "label": "Invert Colors",
+//         "defaultValue": false
+//       }
+//     ]
+//   },
   {
     "type": "section",
+    "capabilities": ["COLOR"],
     "items": [
       {
         "type": "heading",
@@ -30,6 +47,7 @@ module.exports = [
   },
   {
     "type": "section",
+    "capabilities": ["COLOR"],
     "items": [
       {
         "type": "heading",
@@ -38,19 +56,19 @@ module.exports = [
       {
         "type": "color",
         "messageKey": "TimeColor",
-        "defaultValue": "0x000000",
+        "defaultValue": "#AA0000",
         "label": "Time Color"
       },
       {
         "type": "color",
         "messageKey": "DateColor",
-        "defaultValue": "0x000000",
+        "defaultValue": "0xFFFFAA",
         "label": "Date Color"
       },
       {
         "type": "color",
         "messageKey": "WeatherColor",
-        "defaultValue": "0xFFFFFF",
+        "defaultValue": "#55AAAA",
         "label": "Weather Color"
       }
     ]

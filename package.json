@@ -27,7 +27,8 @@
             "TimeColor",
             "DateColor",
             "WeatherColor",
-            "WeatherCheckRate"
+            "WeatherCheckRate",
+            "InvertColors"
         ],
         "projectType": "native",
         "resources": {
@@ -42,7 +43,9 @@
         "sdkVersion": "3",
         "targetPlatforms": [
             "aplite",
-            "basalt"
+            "basalt",
+            "diorite",
+            "flint"
         ],
         "uuid": "339924fe-355f-4340-9a99-86ff0badf085",
         "watchapp": {
