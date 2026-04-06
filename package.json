@@ -39,6 +39,12 @@
                     "file": "images/bt-icon.png",
                     "name": "IMAGE_BT_ICON",
                     "type": "bitmap"
+                },
+                {
+                    "file": "images/app-icon.png",
+                    "name": "APP_ICON",
+                    "targetPlatforms": null,
+                    "type": "bitmap"
                 }
             ]
         },
@@ -54,5 +60,5 @@
             "watchface": true
         }
     },
-    "version": "1.0.0"
+    "version": "1.3.0"
 }
