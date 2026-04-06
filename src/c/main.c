@@ -106,9 +106,8 @@ static void prv_update_display() {
   if (settings.BatteryTextMode) {
     layer_set_hidden(s_battery_layer, true);
     layer_set_hidden(text_layer_get_layer(s_battery_text_layer), false);
-    text_layer_set_text_color(s_battery_text_layer, PBL_IF_COLOR_ELSE(GColorWhite, bw_fg));
-    text_layer_set_background_color(s_battery_text_layer, GColorClear);
     prv_update_battery_text();
+    text_layer_set_background_color(s_battery_text_layer, GColorClear);
   } else {
     layer_set_hidden(s_battery_layer, false);
     layer_set_hidden(text_layer_get_layer(s_battery_text_layer), true);
@@ -126,6 +125,18 @@ static void prv_update_battery_text() {
     snprintf(s_batt_text_buf, sizeof(s_batt_text_buf), "Batt: %d%%", s_battery_level);
   }
   text_layer_set_text(s_battery_text_layer, s_batt_text_buf);
+
+  // Match text color to battery bar colors
+  GColor bw_fg = settings.DarkMode ? GColorWhite : GColorBlack;
+  GColor text_color;
+  if (s_battery_level <= 20) {
+    text_color = PBL_IF_COLOR_ELSE(GColorRed, bw_fg);
+  } else if (s_battery_level <= 40) {
+    text_color = PBL_IF_COLOR_ELSE(GColorChromeYellow, bw_fg);
+  } else {
+    text_color = PBL_IF_COLOR_ELSE(GColorGreen, bw_fg);
+  }
+  text_layer_set_text_color(s_battery_text_layer, text_color);
 }
 
 static void update_time() {
@@ -388,18 +399,18 @@ static void prv_position_layers(GRect bounds) {
   int w = bounds.size.w;
   int upper_height = (h * 2) / 3;
 
-  // Scale content block dimensions relative to 168px reference height
-  int time_layer_h = h * 5 / 14;    // 60 @ 168, 81 @ 228
-  int time_to_date = h / 4;          // 42 @ 168, 57 @ 228
-  int date_layer_h = h * 5 / 28;     // 30 @ 168, 40 @ 228
-  int date_to_bar  = h / 28;         //  6 @ 168,  8 @ 228
-  int bar_h        = h / 14;         // 12 @ 168, 16 @ 228
-  int block_height = time_to_date + date_layer_h + date_to_bar + bar_h;
+  // Divide upper 2/3 into 3 equal zones, one per element
+  int zone_h = upper_height / 3;
 
-  // Center the block vertically in the upper 2/3
-  int time_y = (upper_height - block_height) / 2;
-  int date_y = time_y + time_to_date;
-  int bar_y = date_y + date_layer_h + date_to_bar;
+  // Scale element heights relative to 168px reference height
+  int time_layer_h = h * 5 / 14;    // 60 @ 168, 81 @ 228
+  int date_layer_h = h * 5 / 28;    // 30 @ 168, 40 @ 228
+  int bar_h        = h / 14;        // 12 @ 168, 16 @ 228
+
+  // Center each element vertically within its zone
+  int time_y = (zone_h - time_layer_h) / 2 + 10;
+  int date_y = zone_h + (zone_h - date_layer_h) / 2 + 5;
+  int bar_y  = 2 * zone_h + (zone_h - bar_h) / 2;
 
   int bar_width = w / 2;
   int bar_x = (w - bar_width) / 2;
@@ -407,9 +418,9 @@ static void prv_position_layers(GRect bounds) {
   layer_set_frame(text_layer_get_layer(s_time_layer), GRect(0, time_y, w, time_layer_h));
   layer_set_frame(text_layer_get_layer(s_date_layer), GRect(0, date_y, w, date_layer_h));
   layer_set_frame(s_battery_layer, GRect(bar_x, bar_y, bar_width, bar_h));
-  // Battery text layer: full width, taller to fit font, vertically aligned with bar
-  int text_h = 22;
-  int text_y = bar_y + (bar_h - text_h) / 2;
+  // Battery text layer: centered on bar, shifted up 5px
+  int text_h = 28;
+  int text_y = bar_y + (bar_h - text_h) / 2 - 5;
   layer_set_frame(text_layer_get_layer(s_battery_text_layer), GRect(0, text_y, w, text_h));
 
   // Weather background fills entire bottom 1/3
@@ -473,7 +484,7 @@ static void main_window_load(Window *window) {
   layer_set_update_proc(s_battery_layer, battery_update_proc);
 
   s_battery_text_layer = text_layer_create(GRect(0, 0, 0, 0));
-  text_layer_set_font(s_battery_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
+  text_layer_set_font(s_battery_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
   text_layer_set_text_alignment(s_battery_text_layer, GTextAlignmentCenter);
   text_layer_set_background_color(s_battery_text_layer, GColorClear);
 
