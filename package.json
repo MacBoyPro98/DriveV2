@@ -43,7 +43,7 @@
                 {
                     "file": "images/icon.png",
                     "name": "MENU_ICON",
-                    "targetPlatforms": null,
+                    "menuIcon": true,
                     "type": "bitmap"
                 }
             ]
