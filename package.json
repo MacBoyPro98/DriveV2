@@ -41,8 +41,8 @@
                     "type": "bitmap"
                 },
                 {
-                    "file": "images/app-icon.png",
-                    "name": "APP_ICON",
+                    "file": "images/icon.png",
+                    "name": "MENU_ICON",
                     "targetPlatforms": null,
                     "type": "bitmap"
                 }
