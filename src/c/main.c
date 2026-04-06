@@ -15,6 +15,7 @@ typedef struct ClaySettings {
   int WeatherCheckRate;
   bool TemperatureUnit; // false = Celsius, true = Fahrenheit
   bool ShowDate;
+  int ChargingBlinkRate; // milliseconds between blinks (default 500)
 } ClaySettings;
 
 // An instance of the struct
@@ -29,6 +30,9 @@ static TextLayer *s_weather_layer;
 // Battery
 static Layer *s_battery_layer;
 static int s_battery_level;
+static bool s_battery_charging;
+static bool s_charge_blink_on;
+static AppTimer *s_charge_timer;
 
 // Weather background
 static Layer *s_weather_bg_layer;
@@ -39,6 +43,9 @@ static GBitmap *s_bt_icon_bitmap;
 
 // Unobstructed area
 static Layer *s_window_layer;
+
+// Forward declarations
+static void prv_update_bt_display(bool connected);
 
 // Set default settings
 static void prv_default_settings() {
@@ -51,6 +58,7 @@ static void prv_default_settings() {
   settings.TimeColor = GColorDarkCandyAppleRed;
   settings.DateColor = GColorYellow;
   settings.WeatherColor = GColorCadetBlue;
+  settings.ChargingBlinkRate = 500;
 }
 
 // Save settings to persistent storage
@@ -112,17 +120,27 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   }
 }
 
+static void charge_blink_timer_callback(void *data) {
+  s_charge_blink_on = !s_charge_blink_on;
+  layer_mark_dirty(s_battery_layer);
+  s_charge_timer = app_timer_register(settings.ChargingBlinkRate, charge_blink_timer_callback, NULL);
+}
+
 static void battery_callback(BatteryChargeState state) {
-//   static char battery_text[15];
-  
-//   if (state.is_charging) {
-//     snprintf(battery_text, sizeof(battery_text), "charging");
-//   } else {
-//     snprintf(battery_text, sizeof(battery_text), "Batt: %d%%", state.charge_percent);
-//   }
-//   text_layer_set_text(s_battery_layer, battery_text);
-  
   s_battery_level = state.charge_percent;
+
+  if (state.is_charging && !s_battery_charging) {
+    s_battery_charging = true;
+    s_charge_blink_on = true;
+    s_charge_timer = app_timer_register(settings.ChargingBlinkRate, charge_blink_timer_callback, NULL);
+  } else if (!state.is_charging && s_battery_charging) {
+    s_battery_charging = false;
+    if (s_charge_timer) {
+      app_timer_cancel(s_charge_timer);
+      s_charge_timer = NULL;
+    }
+  }
+
   layer_mark_dirty(s_battery_layer);
 }
 
@@ -149,6 +167,15 @@ static void battery_update_proc(Layer *layer, GContext *ctx) {
   // Draw the filled bar inside the border
   graphics_context_set_fill_color(ctx, bar_color);
   graphics_fill_rect(ctx, GRect(2, 2, bar_width, bounds.size.h - 4), 1, GCornerNone);
+
+  // Draw blinking "remaining" portion when charging
+  if (s_battery_charging && s_charge_blink_on) {
+    int remaining_x = 2 + bar_width;
+    int remaining_w = (bounds.size.w - 4) - bar_width;
+    if (remaining_w > 0) {
+      graphics_fill_rect(ctx, GRect(remaining_x, 2, remaining_w, bounds.size.h - 4), 1, GCornerNone);
+    }
+  }
 }
 
 static void weather_bg_update_proc(Layer *layer, GContext *ctx) {
@@ -158,8 +185,7 @@ static void weather_bg_update_proc(Layer *layer, GContext *ctx) {
 }
 
 static void bluetooth_callback(bool connected) {
-  // Show icon if disconnected
-  layer_set_hidden(bitmap_layer_get_layer(s_bt_icon_layer), connected);
+  prv_update_bt_display(connected);
 
   if (!connected) {
     vibes_double_pulse();
@@ -226,8 +252,13 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
     settings.ShowDate = show_date_t->value->int32 == 1;
   }
 
+  Tuple *blink_rate_t = dict_find(iterator, MESSAGE_KEY_ChargingBlinkRate);
+  if (blink_rate_t) {
+    settings.ChargingBlinkRate = (int)blink_rate_t->value->int32;
+  }
+
   // Save and apply if any settings were changed
-  if (bg_color_t || w_bg_color_t || time_color_t || date_color_t || temp_color_t || temp_unit_t || show_date_t) {
+  if (bg_color_t || w_bg_color_t || time_color_t || date_color_t || temp_color_t || temp_unit_t || show_date_t || blink_rate_t) {
     prv_save_settings();
     prv_update_display();
 
@@ -251,6 +282,35 @@ static void outbox_failed_callback(DictionaryIterator *iterator, AppMessageResul
 
 static void outbox_sent_callback(DictionaryIterator *iterator, void *context) {
   APP_LOG(APP_LOG_LEVEL_INFO, "Outbox send success!");
+}
+
+// Shift battery bar left and show BT icon when disconnected,
+// or center battery bar and hide BT icon when connected.
+static void prv_update_bt_display(bool connected) {
+  GRect bat_frame = layer_get_frame(s_battery_layer);
+  GRect bounds = layer_get_unobstructed_bounds(s_window_layer);
+  int w = bounds.size.w;
+  int bar_width = bat_frame.size.w;
+  int bar_h = bat_frame.size.h;
+  int bar_y = bat_frame.origin.y;
+
+  if (connected) {
+    int bar_x = (w - bar_width) / 2;
+    layer_set_frame(s_battery_layer, GRect(bar_x, bar_y, bar_width, bar_h));
+    layer_set_hidden(bitmap_layer_get_layer(s_bt_icon_layer), true);
+  } else {
+    GSize icon_size = gbitmap_get_bounds(s_bt_icon_bitmap).size;
+    int icon_w = icon_size.w;
+    int icon_h = icon_size.h;
+    int gap = bar_h / 3;
+    int total_w = bar_width + gap + icon_w;
+    int block_x = (w - total_w) / 2;
+    int icon_y = bar_y + (bar_h - icon_h) / 2;  // vertically center icon with bar
+    layer_set_frame(s_battery_layer, GRect(block_x, bar_y, bar_width, bar_h));
+    layer_set_frame(bitmap_layer_get_layer(s_bt_icon_layer),
+                    GRect(block_x + bar_width + gap, icon_y, icon_w, icon_h));
+    layer_set_hidden(bitmap_layer_get_layer(s_bt_icon_layer), false);
+  }
 }
 
 // Position all layers based on available screen bounds.
@@ -289,6 +349,9 @@ static void prv_position_layers(GRect bounds) {
   int front_top_pad = 5;
   int weather_y = upper_height + (lower_height - font_h) / 2 - front_top_pad;
   layer_set_frame(text_layer_get_layer(s_weather_layer), GRect(0, weather_y, w, font_h));
+
+  // Adjust battery/BT layout based on current connection state
+  prv_update_bt_display(connection_service_peek_pebble_app_connection());
 }
 
 // Unobstructed area handlers
@@ -310,10 +373,9 @@ static void prv_unobstructed_did_change(void *context) {
 
   // Keep BT icon hidden when obstructed, otherwise restore based on connection
   if (bt_obstructed) {
-    layer_set_hidden(bitmap_layer_get_layer(s_bt_icon_layer), true);
+    prv_update_bt_display(true);
   } else {
-    layer_set_hidden(bitmap_layer_get_layer(s_bt_icon_layer),
-      connection_service_peek_pebble_app_connection());
+    prv_update_bt_display(connection_service_peek_pebble_app_connection());
   }
 }
 
@@ -341,6 +403,12 @@ static void main_window_load(Window *window) {
   text_layer_set_background_color(s_weather_layer, GColorClear);
   text_layer_set_text(s_weather_layer, "...");
 
+  // Create Bluetooth icon
+  s_bt_icon_bitmap = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BT_ICON);
+  s_bt_icon_layer = bitmap_layer_create(GRect(0, 0, 0, 0));
+  bitmap_layer_set_bitmap(s_bt_icon_layer, s_bt_icon_bitmap);
+  bitmap_layer_set_compositing_mode(s_bt_icon_layer, GCompOpSet);
+
   // Position all layers
   prv_position_layers(layer_get_bounds(s_window_layer));
 
@@ -350,6 +418,7 @@ static void main_window_load(Window *window) {
   layer_add_child(s_window_layer, text_layer_get_layer(s_date_layer));
   layer_add_child(s_window_layer, text_layer_get_layer(s_weather_layer));
   layer_add_child(s_window_layer, s_battery_layer);
+  layer_add_child(s_window_layer, bitmap_layer_get_layer(s_bt_icon_layer));
 
   // Apply saved settings
   prv_update_display();
@@ -361,6 +430,8 @@ static void main_window_unload(Window *window) {
   text_layer_destroy(s_weather_layer);
   layer_destroy(s_weather_bg_layer);
   layer_destroy(s_battery_layer);
+  bitmap_layer_destroy(s_bt_icon_layer);
+  gbitmap_destroy(s_bt_icon_bitmap);
 }
 
 static void init() {
@@ -386,6 +457,14 @@ static void init() {
     .pebble_app_connection_handler = bluetooth_callback
   });
 
+  // Subscribe to unobstructed area events (for round watches with quick view)
+  UnobstructedAreaHandlers ua_handlers = {
+    .will_change = prv_unobstructed_will_change,
+    .change = prv_unobstructed_change,
+    .did_change = prv_unobstructed_did_change
+  };
+  unobstructed_area_service_subscribe(ua_handlers, NULL);
+
   // Register AppMessage callbacks
   app_message_register_inbox_received(inbox_received_callback);
   app_message_register_inbox_dropped(inbox_dropped_callback);
@@ -399,6 +478,9 @@ static void init() {
 }
 
 static void deinit() {
+  if (s_charge_timer) {
+    app_timer_cancel(s_charge_timer);
+  }
   window_destroy(s_main_window);
 }
 

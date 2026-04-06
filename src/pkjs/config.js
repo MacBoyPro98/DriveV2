@@ -100,6 +100,15 @@ module.exports = [
         "messageKey": "ShowDate",
         "label": "Show Date",
         "defaultValue": true
+      },
+      {
+        "type": "slider",
+        "messageKey": "ChargingBlinkRate",
+        "label": "Charging blink speed (ms)",
+        "defaultValue": 500,
+        "min": 200,
+        "max": 2000,
+        "step": 100
       }
     ]
   },

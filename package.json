@@ -28,7 +28,8 @@
             "DateColor",
             "WeatherColor",
             "WeatherCheckRate",
-            "InvertColors"
+            "InvertColors",
+            "ChargingBlinkRate"
         ],
         "projectType": "native",
         "resources": {
