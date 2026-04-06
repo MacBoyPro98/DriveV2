@@ -58,7 +58,7 @@ static void prv_default_settings() {
   settings.TimeColor = GColorDarkCandyAppleRed;
   settings.DateColor = GColorYellow;
   settings.WeatherColor = GColorCadetBlue;
-  settings.ChargingBlinkRate = 500;
+  settings.ChargingBlinkRate = 1000;
 }
 
 // Save settings to persistent storage

@@ -105,7 +105,7 @@ module.exports = [
         "type": "slider",
         "messageKey": "ChargingBlinkRate",
         "label": "Charging blink speed (ms)",
-        "defaultValue": 500,
+        "defaultValue": 1000,
         "min": 200,
         "max": 2000,
         "step": 100
