@@ -363,8 +363,6 @@ static void prv_update_bt_display(bool connected) {
   int bar_y = bat_frame.origin.y;
 
   if (connected) {
-    int bar_x = (w - bar_width) / 2;
-    layer_set_frame(s_battery_layer, GRect(bar_x, bar_y, bar_width, bar_h));
     layer_set_hidden(bitmap_layer_get_layer(s_bt_icon_layer), true);
   } else {
     GSize icon_size = gbitmap_get_bounds(s_bt_icon_bitmap).size;
@@ -380,13 +378,13 @@ static void prv_update_bt_display(bool connected) {
       layer_set_frame(bitmap_layer_get_layer(s_bt_icon_layer),
                       GRect(icon_x, icon_y, icon_w, icon_h));
     } else {
+      // Keep battery bar centered; place BT icon just to its right
+      int bar_x = (w - bar_width) / 2;
       int gap = bar_h / 3;
-      int total_w = bar_width + gap + icon_w;
-      int block_x = (w - total_w) / 2;
+      int icon_x = bar_x + bar_width + gap;
       int icon_y = bar_y + (bar_h - icon_h) / 2;
-      layer_set_frame(s_battery_layer, GRect(block_x, bar_y, bar_width, bar_h));
       layer_set_frame(bitmap_layer_get_layer(s_bt_icon_layer),
-                      GRect(block_x + bar_width + gap, icon_y, icon_w, icon_h));
+                      GRect(icon_x, icon_y, icon_w, icon_h));
     }
     layer_set_hidden(bitmap_layer_get_layer(s_bt_icon_layer), false);
   }
