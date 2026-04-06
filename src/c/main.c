@@ -15,7 +15,8 @@ typedef struct ClaySettings {
   int WeatherCheckRate;
   bool TemperatureUnit; // false = Celsius, true = Fahrenheit
   bool ShowDate;
-  int ChargingBlinkRate; // milliseconds between blinks (default 500)
+  int ChargingBlinkRate; // milliseconds between blinks (default 1000)
+  bool DarkMode; // B&W only: true = black bg/white text, false = inverted
 } ClaySettings;
 
 // An instance of the struct
@@ -59,6 +60,7 @@ static void prv_default_settings() {
   settings.DateColor = GColorYellow;
   settings.WeatherColor = GColorCadetBlue;
   settings.ChargingBlinkRate = 1000;
+  settings.DarkMode = true;
 }
 
 // Save settings to persistent storage
@@ -76,17 +78,21 @@ static void prv_load_settings() {
 
 // Apply settings to UI elements
 static void prv_update_display() {
-  window_set_background_color(s_main_window, settings.BackgroundColor);
+  // B&W colors derived from DarkMode setting
+  GColor bw_bg = settings.DarkMode ? GColorBlack : GColorWhite;
+  GColor bw_fg = settings.DarkMode ? GColorWhite : GColorBlack;
+
+  window_set_background_color(s_main_window, PBL_IF_COLOR_ELSE(settings.BackgroundColor, bw_bg));
   // Set background color
-  text_layer_set_background_color(s_time_layer, PBL_IF_COLOR_ELSE(settings.BackgroundColor, GColorBlack));
-  text_layer_set_background_color(s_date_layer, PBL_IF_COLOR_ELSE(settings.BackgroundColor, GColorBlack));
+  text_layer_set_background_color(s_time_layer, PBL_IF_COLOR_ELSE(settings.BackgroundColor, bw_bg));
+  text_layer_set_background_color(s_date_layer, PBL_IF_COLOR_ELSE(settings.BackgroundColor, bw_bg));
   text_layer_set_background_color(s_weather_layer, GColorClear);
   layer_mark_dirty(s_weather_bg_layer);
 
   // Set text colors
-  text_layer_set_text_color(s_time_layer, PBL_IF_COLOR_ELSE(settings.TimeColor, GColorWhite));
-  text_layer_set_text_color(s_date_layer, PBL_IF_COLOR_ELSE(settings.DateColor, GColorWhite));
-  text_layer_set_text_color(s_weather_layer, PBL_IF_COLOR_ELSE(settings.WeatherColor, GColorBlack));
+  text_layer_set_text_color(s_time_layer, PBL_IF_COLOR_ELSE(settings.TimeColor, bw_fg));
+  text_layer_set_text_color(s_date_layer, PBL_IF_COLOR_ELSE(settings.DateColor, bw_fg));
+  text_layer_set_text_color(s_weather_layer, PBL_IF_COLOR_ELSE(settings.WeatherColor, bw_bg));
 
   // Show/hide date based on setting
   layer_set_hidden(text_layer_get_layer(s_date_layer), !settings.ShowDate);
@@ -150,18 +156,21 @@ static void battery_update_proc(Layer *layer, GContext *ctx) {
   // Find the width of the bar (inside the border)
   int bar_width = ((s_battery_level * (bounds.size.w - 4)) / 100);
 
-  // Draw the border using the text color
-  graphics_context_set_stroke_color(ctx, GColorWhite);
+  // B&W foreground color based on DarkMode
+  GColor bw_fg = settings.DarkMode ? GColorWhite : GColorBlack;
+
+  // Draw the border using the foreground color
+  graphics_context_set_stroke_color(ctx, PBL_IF_COLOR_ELSE(GColorWhite, bw_fg));
   graphics_draw_round_rect(ctx, bounds, 2);
 
   // Choose color based on battery level
   GColor bar_color;
   if (s_battery_level <= 20) {
-    bar_color = PBL_IF_COLOR_ELSE(GColorRed, GColorWhite);
+    bar_color = PBL_IF_COLOR_ELSE(GColorRed, bw_fg);
   } else if (s_battery_level <= 40) {
-    bar_color = PBL_IF_COLOR_ELSE(GColorChromeYellow, GColorWhite);
+    bar_color = PBL_IF_COLOR_ELSE(GColorChromeYellow, bw_fg);
   } else {
-    bar_color = PBL_IF_COLOR_ELSE(GColorGreen, GColorWhite);
+    bar_color = PBL_IF_COLOR_ELSE(GColorGreen, bw_fg);
   }
 
   // Draw the filled bar inside the border
@@ -180,7 +189,8 @@ static void battery_update_proc(Layer *layer, GContext *ctx) {
 
 static void weather_bg_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
-  graphics_context_set_fill_color(ctx, PBL_IF_COLOR_ELSE(settings.WeatherBackgroundColor, GColorWhite));
+  GColor bw_fg = settings.DarkMode ? GColorWhite : GColorBlack;
+  graphics_context_set_fill_color(ctx, PBL_IF_COLOR_ELSE(settings.WeatherBackgroundColor, bw_fg));
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 }
 
@@ -257,8 +267,13 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
     settings.ChargingBlinkRate = (int)blink_rate_t->value->int32;
   }
 
+  Tuple *dark_mode_t = dict_find(iterator, MESSAGE_KEY_DarkMode);
+  if (dark_mode_t) {
+    settings.DarkMode = dark_mode_t->value->int32 == 1;
+  }
+
   // Save and apply if any settings were changed
-  if (bg_color_t || w_bg_color_t || time_color_t || date_color_t || temp_color_t || temp_unit_t || show_date_t || blink_rate_t) {
+  if (bg_color_t || w_bg_color_t || time_color_t || date_color_t || temp_color_t || temp_unit_t || show_date_t || blink_rate_t || dark_mode_t) {
     prv_save_settings();
     prv_update_display();
 
@@ -358,12 +373,14 @@ static void prv_position_layers(GRect bounds) {
 static void prv_unobstructed_will_change(GRect final_unobstructed_screen_area, void *context) {
   // Hide BT icon during the transition to reduce clutter
   layer_set_hidden(bitmap_layer_get_layer(s_bt_icon_layer), true);
-  // Hide Weather during the transition to reduce clutter 
-  // layer_set_hidden(text_layer_get_layer(s_weather_layer), true);
+  // Hide weather layers during the transition to reduce clutter
+  layer_set_hidden(text_layer_get_layer(s_weather_layer), true);
+  layer_set_hidden(s_weather_bg_layer, true);
 }
 
 static void prv_unobstructed_change(AnimationProgress progress, void *context) {
-  prv_position_layers(layer_get_unobstructed_bounds(s_window_layer));
+  // Use full bounds so time/date/battery stay in place during quick-view
+  prv_position_layers(layer_get_bounds(s_window_layer));
 }
 
 static void prv_unobstructed_did_change(void *context) {
@@ -371,11 +388,15 @@ static void prv_unobstructed_did_change(void *context) {
   GRect bounds = layer_get_unobstructed_bounds(s_window_layer);
   bool bt_obstructed = !grect_equal(&full_bounds, &bounds);
 
-  // Keep BT icon hidden when obstructed, otherwise restore based on connection
+  // Keep BT icon and weather hidden when obstructed, otherwise restore
   if (bt_obstructed) {
     prv_update_bt_display(true);
+    layer_set_hidden(text_layer_get_layer(s_weather_layer), true);
+    layer_set_hidden(s_weather_bg_layer, true);
   } else {
     prv_update_bt_display(connection_service_peek_pebble_app_connection());
+    layer_set_hidden(text_layer_get_layer(s_weather_layer), false);
+    layer_set_hidden(s_weather_bg_layer, false);
   }
 }
 

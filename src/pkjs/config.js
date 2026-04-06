@@ -113,6 +113,22 @@ module.exports = [
     ]
   },
   {
+    "type": "section",
+    "capabilities": ["BW"],
+    "items": [
+      {
+        "type": "heading",
+        "defaultValue": "Display"
+      },
+      {
+        "type": "toggle",
+        "messageKey": "DarkMode",
+        "label": "Dark Mode",
+        "defaultValue": true
+      }
+    ]
+  },
+  {
     "type": "submit",
     "defaultValue": "Save Settings"
   }
