@@ -6,6 +6,33 @@
 // Vertical inset for round displays to keep content within the usable circle
 #define ROUND_VERTICAL_INSET 18
 
+// Platform-specific fonts and layout offsets
+#if defined(PBL_PLATFORM_EMERY) || defined(PBL_PLATFORM_GABBRO)
+  #define TIME_WEATHER_FONT FONT_KEY_LECO_60_NUMBERS_AM_PM
+  #define TIME_WEATHER_FONT_H 60
+  #define DATE_BATT_FONT FONT_KEY_GOTHIC_28_BOLD
+  #define DATE_BATT_FONT_H 28
+  #define TIME_Y_OFFSET 15
+  #define DATE_Y_OFFSET 15
+  #define WEATHER_TOP_PAD 9
+#elif PBL_ROUND
+  #define TIME_WEATHER_FONT FONT_KEY_LECO_36_BOLD_NUMBERS
+  #define TIME_WEATHER_FONT_H 36
+  #define DATE_BATT_FONT FONT_KEY_GOTHIC_24_BOLD
+  #define DATE_BATT_FONT_H 24
+  #define TIME_Y_OFFSET 5
+  #define DATE_Y_OFFSET 0
+  #define WEATHER_TOP_PAD 10
+#else
+  #define TIME_WEATHER_FONT FONT_KEY_LECO_42_NUMBERS
+  #define TIME_WEATHER_FONT_H 42
+  #define DATE_BATT_FONT FONT_KEY_GOTHIC_24_BOLD
+  #define DATE_BATT_FONT_H 24
+  #define TIME_Y_OFFSET 10
+  #define DATE_Y_OFFSET 5
+  #define WEATHER_TOP_PAD 6
+#endif
+
 // Define our settings struct
 typedef struct ClaySettings {
   GColor BackgroundColor;
@@ -417,8 +444,8 @@ static void prv_position_layers(GRect bounds) {
   int bar_h        = usable_h / 14;        // 12 @ 168, 16 @ 228
 
   // Center each element vertically within its zone (offset by top_inset)
-  int time_y = top_inset + (zone_h - time_layer_h) / 2 + PBL_IF_ROUND_ELSE(5, 10);
-  int date_y = top_inset + zone_h + (zone_h - date_layer_h) / 2 + PBL_IF_ROUND_ELSE(0, 5);
+  int time_y = top_inset + (zone_h - time_layer_h) / 2 + TIME_Y_OFFSET;
+  int date_y = top_inset + zone_h + (zone_h - date_layer_h) / 2 + DATE_Y_OFFSET;
   int bar_y  = top_inset + 2 * zone_h + (zone_h - bar_h) / 2;
 
   // Narrower battery bar on round to fit within the circle at that y-position
@@ -429,7 +456,7 @@ static void prv_position_layers(GRect bounds) {
   layer_set_frame(text_layer_get_layer(s_date_layer), GRect(0, date_y, w, date_layer_h));
   layer_set_frame(s_battery_layer, GRect(bar_x, bar_y, bar_width, bar_h));
   // Battery text layer: centered on bar, shifted up 5px
-  int text_h = 28;
+  int text_h = DATE_BATT_FONT_H + 4;
   int text_y = bar_y + (bar_h - text_h) / 2 - 5;
   layer_set_frame(text_layer_get_layer(s_battery_text_layer), GRect(0, text_y, w, text_h));
 
@@ -439,8 +466,8 @@ static void prv_position_layers(GRect bounds) {
   layer_set_frame(s_weather_bg_layer, GRect(0, lower_top, w, lower_height));
 
   // Center the weather text vertically within the bottom section
-  int font_h = PBL_IF_ROUND_ELSE(36, 42);
-  int front_top_pad = PBL_IF_ROUND_ELSE(10, 5);
+  int font_h = TIME_WEATHER_FONT_H;
+  int front_top_pad = WEATHER_TOP_PAD;
   int weather_y = lower_top + (lower_height - font_h) / 2 - front_top_pad;
   layer_set_frame(text_layer_get_layer(s_weather_layer), GRect(0, weather_y, w, font_h));
 
@@ -484,19 +511,18 @@ static void main_window_load(Window *window) {
 
   // Create layers with temporary rects (prv_position_layers sets final positions)
   s_time_layer = text_layer_create(GRect(0, 0, 0, 0));
-  text_layer_set_font(s_time_layer, fonts_get_system_font(
-    PBL_IF_ROUND_ELSE(FONT_KEY_LECO_36_BOLD_NUMBERS, FONT_KEY_LECO_42_NUMBERS)));
+  text_layer_set_font(s_time_layer, fonts_get_system_font(TIME_WEATHER_FONT));
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
 
   s_date_layer = text_layer_create(GRect(0, 0, 0, 0));
-  text_layer_set_font(s_date_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
+  text_layer_set_font(s_date_layer, fonts_get_system_font(DATE_BATT_FONT));
   text_layer_set_text_alignment(s_date_layer, GTextAlignmentCenter);
 
   s_battery_layer = layer_create(GRect(0, 0, 0, 0));
   layer_set_update_proc(s_battery_layer, battery_update_proc);
 
   s_battery_text_layer = text_layer_create(GRect(0, 0, 0, 0));
-  text_layer_set_font(s_battery_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
+  text_layer_set_font(s_battery_text_layer, fonts_get_system_font(DATE_BATT_FONT));
   text_layer_set_text_alignment(s_battery_text_layer, GTextAlignmentCenter);
   text_layer_set_background_color(s_battery_text_layer, GColorClear);
 
@@ -504,8 +530,7 @@ static void main_window_load(Window *window) {
   layer_set_update_proc(s_weather_bg_layer, weather_bg_update_proc);
 
   s_weather_layer = text_layer_create(GRect(0, 0, 0, 0));
-  text_layer_set_font(s_weather_layer, fonts_get_system_font(
-    PBL_IF_ROUND_ELSE(FONT_KEY_LECO_36_BOLD_NUMBERS, FONT_KEY_LECO_42_NUMBERS)));
+  text_layer_set_font(s_weather_layer, fonts_get_system_font(TIME_WEATHER_FONT));
   text_layer_set_text_alignment(s_weather_layer, GTextAlignmentCenter);
   text_layer_set_background_color(s_weather_layer, GColorClear);
   text_layer_set_text(s_weather_layer, "...");
