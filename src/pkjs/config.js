@@ -7,22 +7,22 @@ module.exports = [
     "type": "text",
     "defaultValue": "Customize your watchface appearance and preferences."
   },
-//   {
-//     "type": "section",
-//     "layout": ["BLACK_WHITE"],
-//     "items": [
-//       {
-//         "type": "heading",
-//         "defaultValue": "Colors"
-//       },
-//       {
-//         "type": "toggle",
-//         "messageKey": "InvertColors",
-//         "label": "Invert Colors",
-//         "defaultValue": false
-//       }
-//     ]
-//   },
+  {
+    "type": "section",
+    "capabilities": ["BW"],
+    "items": [
+      {
+        "type": "heading",
+        "defaultValue": "Display"
+      },
+      {
+        "type": "toggle",
+        "messageKey": "DarkMode",
+        "label": "Dark Mode",
+        "defaultValue": true
+      }
+    ]
+  },
   {
     "type": "section",
     "capabilities": ["COLOR"],
@@ -102,6 +102,12 @@ module.exports = [
         "defaultValue": true
       },
       {
+        "type": "toggle",
+        "messageKey": "BatteryTextMode",
+        "label": "Show Battery as Text",
+        "defaultValue": false
+      },
+      {
         "type": "slider",
         "messageKey": "ChargingBlinkRate",
         "label": "Charging blink speed (ms)",
@@ -109,22 +115,6 @@ module.exports = [
         "min": 200,
         "max": 2000,
         "step": 100
-      }
-    ]
-  },
-  {
-    "type": "section",
-    "capabilities": ["BW"],
-    "items": [
-      {
-        "type": "heading",
-        "defaultValue": "Display"
-      },
-      {
-        "type": "toggle",
-        "messageKey": "DarkMode",
-        "label": "Dark Mode",
-        "defaultValue": true
       }
     ]
   },

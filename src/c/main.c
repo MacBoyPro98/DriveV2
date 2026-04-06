@@ -16,6 +16,7 @@ typedef struct ClaySettings {
   bool TemperatureUnit; // false = Celsius, true = Fahrenheit
   bool ShowDate;
   int ChargingBlinkRate; // milliseconds between blinks (default 1000)
+  bool BatteryTextMode; // false = bar (default), true = text "Batt: XX%"
   bool DarkMode; // B&W only: true = black bg/white text, false = inverted
 } ClaySettings;
 
@@ -30,9 +31,11 @@ static TextLayer *s_weather_layer;
 
 // Battery
 static Layer *s_battery_layer;
+static TextLayer *s_battery_text_layer;
 static int s_battery_level;
 static bool s_battery_charging;
 static bool s_charge_blink_on;
+static int s_charge_dot_count; // 0-2 for sequential dot animation in text mode
 static AppTimer *s_charge_timer;
 
 // Weather background
@@ -47,6 +50,7 @@ static Layer *s_window_layer;
 
 // Forward declarations
 static void prv_update_bt_display(bool connected);
+static void prv_update_battery_text(void);
 
 // Set default settings
 static void prv_default_settings() {
@@ -60,6 +64,7 @@ static void prv_default_settings() {
   settings.DateColor = GColorYellow;
   settings.WeatherColor = GColorCadetBlue;
   settings.ChargingBlinkRate = 1000;
+  settings.BatteryTextMode = false;
   settings.DarkMode = true;
 }
 
@@ -97,8 +102,30 @@ static void prv_update_display() {
   // Show/hide date based on setting
   layer_set_hidden(text_layer_get_layer(s_date_layer), !settings.ShowDate);
 
-  // Mark battery layer for redraw (color may have changed)
-  layer_mark_dirty(s_battery_layer);
+  // Show/hide battery layers based on mode
+  if (settings.BatteryTextMode) {
+    layer_set_hidden(s_battery_layer, true);
+    layer_set_hidden(text_layer_get_layer(s_battery_text_layer), false);
+    text_layer_set_text_color(s_battery_text_layer, PBL_IF_COLOR_ELSE(GColorWhite, bw_fg));
+    text_layer_set_background_color(s_battery_text_layer, GColorClear);
+    prv_update_battery_text();
+  } else {
+    layer_set_hidden(s_battery_layer, false);
+    layer_set_hidden(text_layer_get_layer(s_battery_text_layer), true);
+    layer_mark_dirty(s_battery_layer);
+  }
+}
+
+static void prv_update_battery_text() {
+  static char s_batt_text_buf[16]; // "Batt: 100%..." = 13 chars + null
+  if (s_battery_charging) {
+    const char *dots[] = {".", "..", "..."};
+    snprintf(s_batt_text_buf, sizeof(s_batt_text_buf), "Batt: %d%%%s",
+             s_battery_level, dots[s_charge_dot_count]);
+  } else {
+    snprintf(s_batt_text_buf, sizeof(s_batt_text_buf), "Batt: %d%%", s_battery_level);
+  }
+  text_layer_set_text(s_battery_text_layer, s_batt_text_buf);
 }
 
 static void update_time() {
@@ -127,8 +154,13 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 }
 
 static void charge_blink_timer_callback(void *data) {
-  s_charge_blink_on = !s_charge_blink_on;
-  layer_mark_dirty(s_battery_layer);
+  if (settings.BatteryTextMode) {
+    s_charge_dot_count = (s_charge_dot_count + 1) % 3;
+    prv_update_battery_text();
+  } else {
+    s_charge_blink_on = !s_charge_blink_on;
+    layer_mark_dirty(s_battery_layer);
+  }
   s_charge_timer = app_timer_register(settings.ChargingBlinkRate, charge_blink_timer_callback, NULL);
 }
 
@@ -138,6 +170,7 @@ static void battery_callback(BatteryChargeState state) {
   if (state.is_charging && !s_battery_charging) {
     s_battery_charging = true;
     s_charge_blink_on = true;
+    s_charge_dot_count = 0;
     s_charge_timer = app_timer_register(settings.ChargingBlinkRate, charge_blink_timer_callback, NULL);
   } else if (!state.is_charging && s_battery_charging) {
     s_battery_charging = false;
@@ -147,7 +180,11 @@ static void battery_callback(BatteryChargeState state) {
     }
   }
 
-  layer_mark_dirty(s_battery_layer);
+  if (settings.BatteryTextMode) {
+    prv_update_battery_text();
+  } else {
+    layer_mark_dirty(s_battery_layer);
+  }
 }
 
 static void battery_update_proc(Layer *layer, GContext *ctx) {
@@ -272,8 +309,13 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
     settings.DarkMode = dark_mode_t->value->int32 == 1;
   }
 
+  Tuple *batt_text_t = dict_find(iterator, MESSAGE_KEY_BatteryTextMode);
+  if (batt_text_t) {
+    settings.BatteryTextMode = batt_text_t->value->int32 == 1;
+  }
+
   // Save and apply if any settings were changed
-  if (bg_color_t || w_bg_color_t || time_color_t || date_color_t || temp_color_t || temp_unit_t || show_date_t || blink_rate_t || dark_mode_t) {
+  if (bg_color_t || w_bg_color_t || time_color_t || date_color_t || temp_color_t || temp_unit_t || show_date_t || blink_rate_t || dark_mode_t || batt_text_t) {
     prv_save_settings();
     prv_update_display();
 
@@ -317,13 +359,24 @@ static void prv_update_bt_display(bool connected) {
     GSize icon_size = gbitmap_get_bounds(s_bt_icon_bitmap).size;
     int icon_w = icon_size.w;
     int icon_h = icon_size.h;
-    int gap = bar_h / 3;
-    int total_w = bar_width + gap + icon_w;
-    int block_x = (w - total_w) / 2;
-    int icon_y = bar_y + (bar_h - icon_h) / 2;  // vertically center icon with bar
-    layer_set_frame(s_battery_layer, GRect(block_x, bar_y, bar_width, bar_h));
-    layer_set_frame(bitmap_layer_get_layer(s_bt_icon_layer),
-                    GRect(block_x + bar_width + gap, icon_y, icon_w, icon_h));
+
+    if (settings.BatteryTextMode) {
+      // Text layer is full-width center-aligned; just position BT icon to the right
+      GRect text_frame = layer_get_frame(text_layer_get_layer(s_battery_text_layer));
+      int text_h = text_frame.size.h;
+      int icon_x = w - icon_w - 4;
+      int icon_y = bar_y + (text_h - icon_h) / 2;
+      layer_set_frame(bitmap_layer_get_layer(s_bt_icon_layer),
+                      GRect(icon_x, icon_y, icon_w, icon_h));
+    } else {
+      int gap = bar_h / 3;
+      int total_w = bar_width + gap + icon_w;
+      int block_x = (w - total_w) / 2;
+      int icon_y = bar_y + (bar_h - icon_h) / 2;
+      layer_set_frame(s_battery_layer, GRect(block_x, bar_y, bar_width, bar_h));
+      layer_set_frame(bitmap_layer_get_layer(s_bt_icon_layer),
+                      GRect(block_x + bar_width + gap, icon_y, icon_w, icon_h));
+    }
     layer_set_hidden(bitmap_layer_get_layer(s_bt_icon_layer), false);
   }
 }
@@ -354,6 +407,10 @@ static void prv_position_layers(GRect bounds) {
   layer_set_frame(text_layer_get_layer(s_time_layer), GRect(0, time_y, w, time_layer_h));
   layer_set_frame(text_layer_get_layer(s_date_layer), GRect(0, date_y, w, date_layer_h));
   layer_set_frame(s_battery_layer, GRect(bar_x, bar_y, bar_width, bar_h));
+  // Battery text layer: full width, taller to fit font, vertically aligned with bar
+  int text_h = 22;
+  int text_y = bar_y + (bar_h - text_h) / 2;
+  layer_set_frame(text_layer_get_layer(s_battery_text_layer), GRect(0, text_y, w, text_h));
 
   // Weather background fills entire bottom 1/3
   int lower_height = h - upper_height;
@@ -415,6 +472,11 @@ static void main_window_load(Window *window) {
   s_battery_layer = layer_create(GRect(0, 0, 0, 0));
   layer_set_update_proc(s_battery_layer, battery_update_proc);
 
+  s_battery_text_layer = text_layer_create(GRect(0, 0, 0, 0));
+  text_layer_set_font(s_battery_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
+  text_layer_set_text_alignment(s_battery_text_layer, GTextAlignmentCenter);
+  text_layer_set_background_color(s_battery_text_layer, GColorClear);
+
   s_weather_bg_layer = layer_create(GRect(0, 0, 0, 0));
   layer_set_update_proc(s_weather_bg_layer, weather_bg_update_proc);
 
@@ -439,6 +501,7 @@ static void main_window_load(Window *window) {
   layer_add_child(s_window_layer, text_layer_get_layer(s_date_layer));
   layer_add_child(s_window_layer, text_layer_get_layer(s_weather_layer));
   layer_add_child(s_window_layer, s_battery_layer);
+  layer_add_child(s_window_layer, text_layer_get_layer(s_battery_text_layer));
   layer_add_child(s_window_layer, bitmap_layer_get_layer(s_bt_icon_layer));
 
   // Apply saved settings
@@ -451,6 +514,7 @@ static void main_window_unload(Window *window) {
   text_layer_destroy(s_weather_layer);
   layer_destroy(s_weather_bg_layer);
   layer_destroy(s_battery_layer);
+  text_layer_destroy(s_battery_text_layer);
   bitmap_layer_destroy(s_bt_icon_layer);
   gbitmap_destroy(s_bt_icon_bitmap);
 }

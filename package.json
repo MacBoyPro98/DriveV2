@@ -29,7 +29,8 @@
             "WeatherColor",
             "WeatherCheckRate",
             "ChargingBlinkRate",
-            "DarkMode"
+            "DarkMode",
+            "BatteryTextMode"
         ],
         "projectType": "native",
         "resources": {
