@@ -30,6 +30,9 @@ static TextLayer *s_weather_layer;
 static Layer *s_battery_layer;
 static int s_battery_level;
 
+// Weather background
+static Layer *s_weather_bg_layer;
+
 // Bluetooth
 static BitmapLayer *s_bt_icon_layer;
 static GBitmap *s_bt_icon_bitmap;
@@ -69,7 +72,8 @@ static void prv_update_display() {
   // Set background color
   text_layer_set_background_color(s_time_layer, PBL_IF_COLOR_ELSE(settings.BackgroundColor, GColorBlack));
   text_layer_set_background_color(s_date_layer, PBL_IF_COLOR_ELSE(settings.BackgroundColor, GColorBlack));
-  text_layer_set_background_color(s_weather_layer, PBL_IF_COLOR_ELSE(settings.WeatherBackgroundColor, GColorWhite));
+  text_layer_set_background_color(s_weather_layer, GColorClear);
+  layer_mark_dirty(s_weather_bg_layer);
 
   // Set text colors
   text_layer_set_text_color(s_time_layer, PBL_IF_COLOR_ELSE(settings.TimeColor, GColorWhite));
@@ -145,6 +149,12 @@ static void battery_update_proc(Layer *layer, GContext *ctx) {
   // Draw the filled bar inside the border
   graphics_context_set_fill_color(ctx, bar_color);
   graphics_fill_rect(ctx, GRect(2, 2, bar_width, bounds.size.h - 4), 1, GCornerNone);
+}
+
+static void weather_bg_update_proc(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+  graphics_context_set_fill_color(ctx, PBL_IF_COLOR_ELSE(settings.WeatherBackgroundColor, GColorWhite));
+  graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 }
 
 static void bluetooth_callback(bool connected) {
@@ -243,6 +253,44 @@ static void outbox_sent_callback(DictionaryIterator *iterator, void *context) {
   APP_LOG(APP_LOG_LEVEL_INFO, "Outbox send success!");
 }
 
+// Position all layers based on available screen bounds.
+// All dimensions scale proportionally from the 144x168 reference design.
+static void prv_position_layers(GRect bounds) {
+  int h = bounds.size.h;
+  int w = bounds.size.w;
+  int upper_height = (h * 2) / 3;
+
+  // Scale content block dimensions relative to 168px reference height
+  int time_layer_h = h * 5 / 14;    // 60 @ 168, 81 @ 228
+  int time_to_date = h / 4;          // 42 @ 168, 57 @ 228
+  int date_layer_h = h * 5 / 28;     // 30 @ 168, 40 @ 228
+  int date_to_bar  = h / 28;         //  6 @ 168,  8 @ 228
+  int bar_h        = h / 14;         // 12 @ 168, 16 @ 228
+  int block_height = time_to_date + date_layer_h + date_to_bar + bar_h;
+
+  // Center the block vertically in the upper 2/3
+  int time_y = (upper_height - block_height) / 2;
+  int date_y = time_y + time_to_date;
+  int bar_y = date_y + date_layer_h + date_to_bar;
+
+  int bar_width = w / 2;
+  int bar_x = (w - bar_width) / 2;
+
+  layer_set_frame(text_layer_get_layer(s_time_layer), GRect(0, time_y, w, time_layer_h));
+  layer_set_frame(text_layer_get_layer(s_date_layer), GRect(0, date_y, w, date_layer_h));
+  layer_set_frame(s_battery_layer, GRect(bar_x, bar_y, bar_width, bar_h));
+
+  // Weather background fills entire bottom 1/3
+  int lower_height = h - upper_height;
+  layer_set_frame(s_weather_bg_layer, GRect(0, upper_height, w, lower_height));
+
+  // Center the 42px weather text vertically within the bottom 1/3
+  int font_h = 42;
+  int front_top_pad = 5;
+  int weather_y = upper_height + (lower_height - font_h) / 2 - front_top_pad;
+  layer_set_frame(text_layer_get_layer(s_weather_layer), GRect(0, weather_y, w, font_h));
+}
+
 // Unobstructed area handlers
 static void prv_unobstructed_will_change(GRect final_unobstructed_screen_area, void *context) {
   // Hide BT icon during the transition to reduce clutter
@@ -252,23 +300,7 @@ static void prv_unobstructed_will_change(GRect final_unobstructed_screen_area, v
 }
 
 static void prv_unobstructed_change(AnimationProgress progress, void *context) {
-  GRect bounds = layer_get_unobstructed_bounds(s_window_layer);
-
-  // Reposition time, date, and battery to fit in the available space
-  int time_height = 60;
-  int date_height = 30;
-  int bar_height = 12;
-  int block_height = time_height + date_height + bar_height;
-  int time_y = ((bounds.size.h / 3) * 2) - block_height;
-  int date_y = time_y + 42;
-
-  GRect time_frame = layer_get_frame(text_layer_get_layer(s_time_layer));
-  time_frame.origin.y = time_y;
-  layer_set_frame(text_layer_get_layer(s_time_layer), time_frame);
-
-  GRect date_frame = layer_get_frame(text_layer_get_layer(s_date_layer));
-  date_frame.origin.y = date_y;
-  layer_set_frame(text_layer_get_layer(s_date_layer), date_frame);
+  prv_position_layers(layer_get_unobstructed_bounds(s_window_layer));
 }
 
 static void prv_unobstructed_did_change(void *context) {
@@ -287,43 +319,33 @@ static void prv_unobstructed_did_change(void *context) {
 
 static void main_window_load(Window *window) {
   s_window_layer = window_get_root_layer(window);
-  GRect bounds = layer_get_bounds(s_window_layer);
 
-  // Date + Time + Battery block = 2/3 screen size
-  int time_height = 60;
-  int date_height = 30;
-  int bar_height = 12;
-  int block_height = time_height + date_height + bar_height;
-  int time_y = ((bounds.size.h / 3) * 2) - block_height;
-//   int date_y = time_y + time_height;
-  int date_y = time_y + 42;
-
-  // Time
-  s_time_layer = text_layer_create(GRect(0, time_y, bounds.size.w, time_height));
+  // Create layers with temporary rects (prv_position_layers sets final positions)
+  s_time_layer = text_layer_create(GRect(0, 0, 0, 0));
   text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_LECO_42_NUMBERS));
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
 
-  // Date
-  s_date_layer = text_layer_create(GRect(0, date_y, bounds.size.w, date_height));
+  s_date_layer = text_layer_create(GRect(0, 0, 0, 0));
   text_layer_set_font(s_date_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
   text_layer_set_text_alignment(s_date_layer, GTextAlignmentCenter);
 
-  // Create battery meter Layer
-  int bar_width = bounds.size.w / 2;
-  int bar_x = (bounds.size.w - bar_width) / 2;
-  int bar_y = (date_y + date_height) + 6;
-  s_battery_layer = layer_create(GRect(bar_x, bar_y, bar_width, bar_height));
+  s_battery_layer = layer_create(GRect(0, 0, 0, 0));
   layer_set_update_proc(s_battery_layer, battery_update_proc);
 
-  // Weather
-  int weather_height = bounds.size.h / 3;
-  int weather_y = bounds.size.h - weather_height;
-  s_weather_layer = text_layer_create(GRect(0, weather_y, bounds.size.w, weather_height));
+  s_weather_bg_layer = layer_create(GRect(0, 0, 0, 0));
+  layer_set_update_proc(s_weather_bg_layer, weather_bg_update_proc);
+
+  s_weather_layer = text_layer_create(GRect(0, 0, 0, 0));
   text_layer_set_font(s_weather_layer, fonts_get_system_font(FONT_KEY_LECO_42_NUMBERS));
   text_layer_set_text_alignment(s_weather_layer, GTextAlignmentCenter);
+  text_layer_set_background_color(s_weather_layer, GColorClear);
   text_layer_set_text(s_weather_layer, "...");
 
-  // Add layers to the Window
+  // Position all layers
+  prv_position_layers(layer_get_bounds(s_window_layer));
+
+  // Add layers to the Window (weather bg first so it draws behind text)
+  layer_add_child(s_window_layer, s_weather_bg_layer);
   layer_add_child(s_window_layer, text_layer_get_layer(s_time_layer));
   layer_add_child(s_window_layer, text_layer_get_layer(s_date_layer));
   layer_add_child(s_window_layer, text_layer_get_layer(s_weather_layer));
@@ -337,6 +359,7 @@ static void main_window_unload(Window *window) {
   text_layer_destroy(s_time_layer);
   text_layer_destroy(s_date_layer);
   text_layer_destroy(s_weather_layer);
+  layer_destroy(s_weather_bg_layer);
   layer_destroy(s_battery_layer);
 }
 
