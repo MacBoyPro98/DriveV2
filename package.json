@@ -42,8 +42,8 @@
                 },
                 {
                     "file": "images/icon.png",
-                    "name": "MENU_ICON",
                     "menuIcon": true,
+                    "name": "MENU_ICON",
                     "type": "bitmap"
                 }
             ]
@@ -52,6 +52,7 @@
         "targetPlatforms": [
             "aplite",
             "basalt",
+            "chalk",
             "diorite",
             "flint"
         ],
@@ -60,5 +61,5 @@
             "watchface": true
         }
     },
-    "version": "1.3.0"
+    "version": "1.4.0"
 }

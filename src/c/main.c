@@ -3,6 +3,9 @@
 // Persistent storage key
 #define SETTINGS_KEY 1
 
+// Vertical inset for round displays to keep content within the usable circle
+#define ROUND_VERTICAL_INSET 18
+
 // Define our settings struct
 typedef struct ClaySettings {
   GColor BackgroundColor;
@@ -239,6 +242,8 @@ static void weather_bg_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
   GColor bw_fg = settings.DarkMode ? GColorWhite : GColorBlack;
   graphics_context_set_fill_color(ctx, PBL_IF_COLOR_ELSE(settings.WeatherBackgroundColor, bw_fg));
+  // On round displays the framebuffer clips to the circle automatically,
+  // so a simple rect fill works correctly on all platforms.
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 }
 
@@ -392,25 +397,32 @@ static void prv_update_bt_display(bool connected) {
 
 // Position all layers based on available screen bounds.
 // All dimensions scale proportionally from the 144x168 reference design.
+// Round displays (Chalk 180x180) push elements toward the center to avoid
+// the circular bezel clipping content near the edges.
 static void prv_position_layers(GRect bounds) {
   int h = bounds.size.h;
   int w = bounds.size.w;
-  int upper_height = (h * 2) / 3;
+
+  // On round displays, inset vertically so elements stay within the usable circle
+  int top_inset = PBL_IF_ROUND_ELSE(ROUND_VERTICAL_INSET, 0);
+  int usable_h = h - 2 * top_inset;
+  int upper_height = (usable_h * 2) / 3;
 
   // Divide upper 2/3 into 3 equal zones, one per element
   int zone_h = upper_height / 3;
 
   // Scale element heights relative to 168px reference height
-  int time_layer_h = h * 5 / 14;    // 60 @ 168, 81 @ 228
-  int date_layer_h = h * 5 / 28;    // 30 @ 168, 40 @ 228
-  int bar_h        = h / 14;        // 12 @ 168, 16 @ 228
+  int time_layer_h = usable_h * 5 / 14;    // 60 @ 168, 81 @ 228
+  int date_layer_h = usable_h * 5 / 28;    // 30 @ 168, 40 @ 228
+  int bar_h        = usable_h / 14;        // 12 @ 168, 16 @ 228
 
-  // Center each element vertically within its zone
-  int time_y = (zone_h - time_layer_h) / 2 + 10;
-  int date_y = zone_h + (zone_h - date_layer_h) / 2 + 5;
-  int bar_y  = 2 * zone_h + (zone_h - bar_h) / 2;
+  // Center each element vertically within its zone (offset by top_inset)
+  int time_y = top_inset + (zone_h - time_layer_h) / 2 + PBL_IF_ROUND_ELSE(5, 10);
+  int date_y = top_inset + zone_h + (zone_h - date_layer_h) / 2 + PBL_IF_ROUND_ELSE(0, 5);
+  int bar_y  = top_inset + 2 * zone_h + (zone_h - bar_h) / 2;
 
-  int bar_width = w / 2;
+  // Narrower battery bar on round to fit within the circle at that y-position
+  int bar_width = PBL_IF_ROUND_ELSE(w / 3, w / 2);
   int bar_x = (w - bar_width) / 2;
 
   layer_set_frame(text_layer_get_layer(s_time_layer), GRect(0, time_y, w, time_layer_h));
@@ -421,14 +433,15 @@ static void prv_position_layers(GRect bounds) {
   int text_y = bar_y + (bar_h - text_h) / 2 - 5;
   layer_set_frame(text_layer_get_layer(s_battery_text_layer), GRect(0, text_y, w, text_h));
 
-  // Weather background fills entire bottom 1/3
-  int lower_height = h - upper_height;
-  layer_set_frame(s_weather_bg_layer, GRect(0, upper_height, w, lower_height));
+  // Weather background fills entire bottom portion
+  int lower_top = top_inset + upper_height;
+  int lower_height = h - lower_top;
+  layer_set_frame(s_weather_bg_layer, GRect(0, lower_top, w, lower_height));
 
-  // Center the 42px weather text vertically within the bottom 1/3
-  int font_h = 42;
-  int front_top_pad = 5;
-  int weather_y = upper_height + (lower_height - font_h) / 2 - front_top_pad;
+  // Center the weather text vertically within the bottom section
+  int font_h = PBL_IF_ROUND_ELSE(36, 42);
+  int front_top_pad = PBL_IF_ROUND_ELSE(10, 5);
+  int weather_y = lower_top + (lower_height - font_h) / 2 - front_top_pad;
   layer_set_frame(text_layer_get_layer(s_weather_layer), GRect(0, weather_y, w, font_h));
 
   // Adjust battery/BT layout based on current connection state
@@ -471,7 +484,8 @@ static void main_window_load(Window *window) {
 
   // Create layers with temporary rects (prv_position_layers sets final positions)
   s_time_layer = text_layer_create(GRect(0, 0, 0, 0));
-  text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_LECO_42_NUMBERS));
+  text_layer_set_font(s_time_layer, fonts_get_system_font(
+    PBL_IF_ROUND_ELSE(FONT_KEY_LECO_36_BOLD_NUMBERS, FONT_KEY_LECO_42_NUMBERS)));
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
 
   s_date_layer = text_layer_create(GRect(0, 0, 0, 0));
@@ -490,7 +504,8 @@ static void main_window_load(Window *window) {
   layer_set_update_proc(s_weather_bg_layer, weather_bg_update_proc);
 
   s_weather_layer = text_layer_create(GRect(0, 0, 0, 0));
-  text_layer_set_font(s_weather_layer, fonts_get_system_font(FONT_KEY_LECO_42_NUMBERS));
+  text_layer_set_font(s_weather_layer, fonts_get_system_font(
+    PBL_IF_ROUND_ELSE(FONT_KEY_LECO_36_BOLD_NUMBERS, FONT_KEY_LECO_42_NUMBERS)));
   text_layer_set_text_alignment(s_weather_layer, GTextAlignmentCenter);
   text_layer_set_background_color(s_weather_layer, GColorClear);
   text_layer_set_text(s_weather_layer, "...");
@@ -503,6 +518,14 @@ static void main_window_load(Window *window) {
 
   // Position all layers
   prv_position_layers(layer_get_bounds(s_window_layer));
+
+  // Enable text flow on round displays so text wraps within the circular screen
+  #if PBL_ROUND
+  text_layer_enable_screen_text_flow_and_paging(s_time_layer, 2);
+  text_layer_enable_screen_text_flow_and_paging(s_date_layer, 2);
+  text_layer_enable_screen_text_flow_and_paging(s_weather_layer, 2);
+  text_layer_enable_screen_text_flow_and_paging(s_battery_text_layer, 2);
+  #endif
 
   // Add layers to the Window (weather bg first so it draws behind text)
   layer_add_child(s_window_layer, s_weather_bg_layer);
