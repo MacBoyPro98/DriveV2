@@ -36,14 +36,15 @@
         "resources": {
             "media": [
                 {
-                    "file": "images/bt-icon.png",
-                    "name": "IMAGE_BT_ICON",
-                    "type": "bitmap"
-                },
-                {
                     "file": "images/icon.png",
                     "menuIcon": true,
                     "name": "MENU_ICON",
+                    "targetPlatforms": null,
+                    "type": "bitmap"
+                },
+                {
+                    "file": "images/bt-icon.png",
+                    "name": "IMAGE_BT_ICON",
                     "type": "bitmap"
                 }
             ]
@@ -63,5 +64,5 @@
             "watchface": true
         }
     },
-    "version": "1.5.0"
+    "version": "1.6.0"
 }
